@@ -1,3 +1,3 @@
 # Autonomous-Robotics
 Autonomous Navigation and Inverse Kinematics for a Turtlebot3 WafflePi
-<a href="https://github.com/spiketg/Autonomous-Robotics/blob/master/Autonomous%20Navigation%20and%20Inverse%20Kinematics%20for%20Turtlebot3.pdf"><img src="https://www.github.com/spiketg/Autonomous-Robotics/raw/paper.png"></a>
+<a href="https://github.com/spiketg/Autonomous-Robotics/blob/master/Autonomous%20Navigation%20and%20Inverse%20Kinematics%20for%20Turtlebot3.pdf"><img src="https://www.github.com/spiketg/Autonomous-Robotics/raw/master/paper.png"></a>
