@@ -71,17 +71,17 @@ class Particle_Filter(object):
         self.weights = np.ones(N)       
         self.prev_parts=self.parts=np.zeros((self.N,3))
         
-        
-    def distance(self,a,b):
+    def distance(a,b):
         return np.sqrt((a[0] - b[0])**2 + (a[1] - b[1])**2)
     
-    def is_between(self,a,c,b):
-        #print distance(a,b), distance(a,c)+distance(c,b)
-        return np.isclose(self.distance(a,b),(self.distance(a,c) + self.distance(c,b)))
+    def distance_matrix(a,b):
+        return np.sqrt((a[:,0] - b[:,0])**2 + (a[:,1] - b[:,1])**2)
     
+    def is_between(a,c,b):
+        return np.isclose(distance_matrix(a,b),(distance_matrix(a,c) + distance_matrix(c,b)))      
     def tf(self,control):
-        x_w = self.x_init-control[1]
-        y_w = self.y_init - control[0]
+        x_w = x_init-control[1]
+        y_w = y_init - control[0]
         yaw_w = (-90*np.pi/180)-control[2]
         if yaw_w < 0:
             yaw_w = yaw_w%(-2*np.pi)
@@ -93,7 +93,6 @@ class Particle_Filter(object):
                 yaw_w-=2*np.pi
         
         return x_w,y_w,yaw_w
-    
     def sample_norm(self,b_2 ):
         b= np.sqrt(b_2)
         rand = np.random.uniform(-b,b,12)
@@ -103,20 +102,14 @@ class Particle_Filter(object):
         b= np.sqrt(b_2)
         rand = np.random.uniform(-b,b,2)
         return (np.sqrt(6)/2) * sum(rand) 
-       
-    # line segment a given by endpoints a1, a2
-    # line segment b given by endpoints b1, b2
-    # return 
-    def perp(self, a ) :
+    
+    
+    def perp(self,a ) :
         b = np.full_like(a,a[:,::-1])
         b[:,0] = -a[:,1]
        
-        #b[:,1] = a[:,0]
         return b
     
-    # line segment a given by endpoints a1, a2
-    # line segment b given by endpoints b1, b2
-    # return 
     def seg_intersect(self,a1,a2, b1,b2) :
         da = a2-a1
        
@@ -124,62 +117,67 @@ class Particle_Filter(object):
        
         dp = a1-b1
      
-        dap = self.perp(da)
-        #print dap.T
+        dap = perp(da)
+      
         denom =np.dot( dap, db.T)
      
         num = np.dot( dap, dp.T )
        
-       
-        
-        rel_int  = (num/denom)*np.identity(len(num/denom))
-        all_int = np.dot(rel_int,db)
-        all_int = all_int+b1
-        
-        int1 = (num/denom)[0,1]*db
-        int2 = (num/denom)[1,0]*db
-        
-        
-        return all_int
+        f  = (num/denom)*np.identity(len(num/denom))
+        t = np.dot(f,db)
+        t = t+b1
     
+        return t
+    
+    total = 0 
     
     def get_true_measure2(self,x,y,yaw):
+            global yaw_world 
+            global reading
             closest_wall=0
-            
+            start =time.time()
             reading = 3.5
-            if  self.yaw_world == 0 :
-                self.yaw_world = 0.00000001
-           
-            pos_reads = np.full_like((self.obst),(x,y,(np.cos(yaw)*3.5+x),(np.sin(yaw)*3.5)+y))
-            
-            obst1= self.obst[:,0:2]
-            obst2= self.obst[:,2:]
+            if yaw_world == 0 :
+                yaw_world = 0.00000001
+            i =0
+            pos_reads = np.full_like((obst),(x,y,(np.cos(yaw)*3.5+x),(np.sin(yaw)*3.5)+y))
+            obst1= obst[:,0:2]
+            obst2= obst[:,2:]
             p1 = pos_reads[:,0:2]
             p2 = pos_reads[:,2:]
             
+            inter = seg_intersect(obst1,obst2,p1,p2)
+            valid = is_between(obst1,inter,obst2)  
             
+            if yaw <-180*np.pi/180:
+                yaw +=180
+            if yaw >180:
+                yaw -=180
                 
-            intersections = self.seg_intersect(obst1,obst2,p1,p2)
-           
-            for ind,inter in enumerate(intersections):
-                if self.is_between(obst1[ind],inter,obst2[ind]):
-                #m=((obst[i][3]-obst[i][1])*(obst[i][0]-x)-(obst[i][2]-obst[i][0])*(obst[i][1]-y))/(((obst[i][3]-obst[i][1])*np.cos(yaw))-((obst[i][2]-obst[i][0])*np.sin(yaw)))
-                    
-                    curr= self.distance(intersections[ind],p1[ind])
-                    if yaw <-180*np.pi/180:
-                        yaw +=180
-                    if yaw >180:
-                        yaw -=180
-                    if curr<reading and (np.isclose(np.arctan2(inter[1]-y,inter[0]-x),yaw, rtol = 0.25)or np.isclose(np.arctan2(inter[1]-y,inter[0]-x),yaw,rtol=0.25)):
-                    
-                        reading = curr
-                        closest_wall = ind
-                        
-            if reading >3.5:
-                    closest_wall= 'nan'
-            #print 
+            np.isclose(np.arctan2(inter[:,1]-p1[:,1],inter[:,0]-p1[:,0]),yaw)
+            is_facing = np.isclose(np.arctan2(inter[:,1]-p1[:,1],inter[:,0]-p1[:,0]),yaw)
             
+            valid_and_facing = np.all([is_facing,valid],axis=0)
+            
+        
+            
+            int_dist = distance_matrix(inter,p1)
+           
+            
+            true_ints=int_dist[valid_and_facing]
+            
+            if len(true_ints)!=0:
+                
+                reading= min(true_ints)
+                
+                closest_wall=int(np.argwhere(int_dist==reading)[0])
+                
+            end = time.time()
+            global total
+            
+            total += (end-start)
             return reading,closest_wall
+    
     
     def likelihood2(self,x,m,std):
         if x>0 and x<3.5:
@@ -198,11 +196,9 @@ class Particle_Filter(object):
             return 1/3.5
         else:
             return 0 
-        
-    #*****************************#
+
     beams2 = beams
-    #beams2[1:]=reversed(beams[1:])
-    #******************************#
+
     def sample_measurement(self,xs,ys,yaws,lidar2):
         beams2 = self.beams
         p=1
@@ -254,12 +250,13 @@ class Particle_Filter(object):
         p_rot1,p_trans,p_rot2 = (angle_1 - self.sample_norm(sd1), t_dist-(self.sample_tri(sd2)),
                                  angle_2 - self.sample_norm(sd3))    
      
-       # print p_rot1,p_trans,p_rot2
+
         x_est = prev_x+(p_trans*np.cos(prev_theta + p_rot1))
         y_est = prev_y + (p_trans*np.sin(prev_theta+p_rot1))
         theta_est =  prev_theta + p_rot1 + p_rot2
-        #print x_est,y_est,theta_est
+
         return x_est, y_est, theta_est
+
     #return a list of particles estimated poses (x,y,yaw)
     def move_particles(self,control=((0,0,0),(0,0,0)),beams2=beams): 
         N = self.N
@@ -287,19 +284,13 @@ class Particle_Filter(object):
             weights[i] *= self.sample_measurement(state_i[0],state_i[1],state_i[2],beams2)
             i+=1
         temp_particles = np.array(particles)
-        #print temp_particles
-        #print weights
-        #print weights.sum()
         weights_n = weights/weights.sum()
-        #print "weights_n  = " + str(weights_n)
-        
+                
         j=0
         bins = np.cumsum(weights_n)
         while j<N:
             r = random.uniform(0,1)
-            index = np.digitize(r,bins)
             particles[j] = temp_particles[np.digitize(r, bins)]
-            # print('index of drawn part is ' + str(index))
             j+=1
          
         
@@ -308,4 +299,3 @@ class Particle_Filter(object):
         curr=time()
         #print 'time in pf: '+str(curr-st)
         return particles
-
